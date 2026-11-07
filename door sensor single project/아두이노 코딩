@@ -1,0 +1,81 @@
+// 👇 블링크 앱에서 복사한 3줄을 여기에 붙여넣으세요 (반드시 #include보다 위에 있어야 함)
+#define BLYNK_TEMPLATE_ID "여기에_템플릿_ID_입력"
+#define BLYNK_TEMPLATE_NAME "여기에_템플릿_이름_입력"
+#define BLYNK_AUTH_TOKEN "여기에_토큰_입력"
+
+#include <WiFi.h>
+#include <WiFiClient.h>
+#include <BlynkSimpleEsp32.h>
+
+// 👇 집 와이파이 이름과 비밀번호를 입력하세요 (2.4GHz 와이파이만 가능, 5G는 불가)
+char ssid[] = "집_와이파이_이름";
+char pass[] = "집_와이파이_비밀번호";
+
+// 핀 설정
+const int sensorPin = 4;
+const int buzzerPin = 5;
+
+// 타이머 및 상태 변수
+unsigned long doorOpenStartTime = 0;
+unsigned long lastBeepTime = 0;
+bool isDoorOpen = false;
+bool openBeepPlayed = false;
+bool buzzerState = false;
+int previousSensorState = -1; // 블링크 서버 과부하 방지용 이전 상태 저장 변수
+
+const unsigned long maxOpenTime = 10000; 
+const unsigned long beepInterval = 300;  
+
+void setup() {
+  pinMode(sensorPin, INPUT_PULLUP); 
+  pinMode(buzzerPin, OUTPUT);
+  digitalWrite(buzzerPin, LOW); 
+  
+  // 블링크 및 와이파이 연결 시작
+  Blynk.begin(BLYNK_AUTH_TOKEN, ssid, pass);
+}
+
+void loop() {
+  Blynk.run(); // 블링크 서버와 지속적인 통신 유지
+  
+  int sensorState = digitalRead(sensorPin);
+  unsigned long currentMillis = millis();
+
+  // 문 상태가 변했을 때만 블링크 서버로 데이터 전송 (V0 핀)
+  if (sensorState != previousSensorState) {
+    if (sensorState == HIGH) {
+      Blynk.virtualWrite(V0, 1); // 스마트폰으로 '문 열림(1)' 신호 전송
+    } else {
+      Blynk.virtualWrite(V0, 0); // 스마트폰으로 '문 닫힘(0)' 신호 전송
+    }
+    previousSensorState = sensorState;
+  }
+
+  // 기존 하드웨어 알람 로직
+  if (sensorState == HIGH) { 
+    if (!isDoorOpen) {
+      isDoorOpen = true;
+      doorOpenStartTime = currentMillis; 
+    }
+
+    if (!openBeepPlayed) {
+      digitalWrite(buzzerPin, HIGH);
+      delay(200); 
+      digitalWrite(buzzerPin, LOW);
+      openBeepPlayed = true;
+    }
+
+    if (currentMillis - doorOpenStartTime >= maxOpenTime) {
+      if (currentMillis - lastBeepTime >= beepInterval) {
+        lastBeepTime = currentMillis;
+        buzzerState = !buzzerState; 
+        digitalWrite(buzzerPin, buzzerState ? HIGH : LOW);
+      }
+    }
+  } 
+  else { 
+    isDoorOpen = false;
+    openBeepPlayed = false;       
+    digitalWrite(buzzerPin, LOW); 
+  }
+}
